@@ -36,7 +36,17 @@ class NanoBananaSDK:
                 subject_data = f.read()
             subject_b64 = base64.b64encode(subject_data).decode('utf-8')
 
-            # Template-based prompts for consistent results
+            # Load template from file
+            template_file = os.path.join(os.path.dirname(__file__), "templates", f"{design_template}.md")
+
+            if not os.path.exists(template_file):
+                # Fallback to christmas_round if template not found
+                template_file = os.path.join(os.path.dirname(__file__), "templates", "christmas_round.md")
+
+            with open(template_file, 'r') as f:
+                template_content = f.read()
+
+            # Build text instruction
             text_instruction = ""
             if text:
                 text_instruction = f"""
@@ -50,38 +60,11 @@ TEXT INTEGRATION (CRITICAL):
 - The text should look like it belongs in the image, with proper lighting and depth
 """
 
-            templates = {
-                "christmas_round": f"""Create a perfectly CIRCULAR ornament design. IMPORTANT: Everything must fit INSIDE the circle - no elements extending beyond the circular border.
-
-IMPORTANT COMPOSITION RULES:
-- Do NOT include an ornament hanger, hole, or hook at the top
-- Keep the top area clear of important elements (subject's face, text)
-- The design should be a complete circular composition
-
-The circle should contain:
-- Christmas string lights forming a ring INSIDE the circular edge
-- A festive Christmas background with snowy village, presents, teddy bears, and sleigh
-- The baby/subject from this image in the center (positioned center or slightly lower), dressed in {clothing_prompt}
-- Keep the baby's face and features EXACTLY as they appear
-- Professional holiday atmosphere with warm lighting
-
-{text_instruction}
-
-The entire composition must be contained within a perfect circle. Nothing should extend outside the circular boundary. This is for a circular ornament or sticker design - complete and seamless with no hanging hardware.""",
-
-                "holiday_card": f"""Create a festive holiday card design with the baby/subject from this image in the center, dressed in {clothing_prompt}. Keep their face identical. Add Christmas decorations, lights, and a warm holiday scene around them.
-
-{text_instruction}
-
-Create an elegant, professional holiday card design.""",
-
-                "festive_scene": f"""Generate a beautiful Christmas scene with the baby/subject from this image as the main focus, dressed in {clothing_prompt}. Keep their face and features exactly the same. Add festive elements like Christmas trees, presents, lights, and holiday decorations. Create a warm, professional holiday atmosphere.
-
-{text_instruction}"""
-            }
-
-            # Get template prompt
-            prompt = templates.get(design_template, templates["christmas_round"])
+            # Format template with variables
+            prompt = template_content.format(
+                clothing_prompt=clothing_prompt,
+                text_instruction=text_instruction
+            )
 
             print(f"📝 Using template: {design_template}")
             print(f"🎨 Generating AI design...")
