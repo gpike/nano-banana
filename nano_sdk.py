@@ -3,32 +3,84 @@ import tempfile
 import base64
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFilter
-from google import genai
-from google.genai import types
+try:
+    from google import genai
+    from google.genai import types
+    GOOGLE_AVAILABLE = True
+except ImportError:
+    GOOGLE_AVAILABLE = False
+
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 # Load environment variables from .env file
 load_dotenv()
 
 class NanoBananaSDK:
-    def __init__(self):
-        self.api_key = os.getenv("GOOGLE_API_KEY")
-        if not self.api_key:
-            raise ValueError("❌ Missing API Key. Please add GOOGLE_API_KEY to your .env file.")
+    def __init__(self, provider=None):
+        """
+        Initialize SDK with AI provider.
 
-        self.client = genai.Client(api_key=self.api_key)
+        Args:
+            provider: 'google', 'openai', or None for auto-detect
+        """
+        # Auto-detect provider if not specified
+        if provider is None:
+            google_key = os.getenv("GOOGLE_API_KEY")
+            openai_key = os.getenv("OPENAI_API_KEY")
+
+            if openai_key and OPENAI_AVAILABLE:
+                provider = 'openai'
+            elif google_key and GOOGLE_AVAILABLE:
+                provider = 'google'
+            else:
+                raise ValueError("❌ Missing API Key. Please add GOOGLE_API_KEY or OPENAI_API_KEY to your .env file.")
+
+        self.provider = provider
+
+        if provider == 'google':
+            if not GOOGLE_AVAILABLE:
+                raise ValueError("❌ Google genai package not installed. Run: pip install google-genai")
+            self.api_key = os.getenv("GOOGLE_API_KEY")
+            if not self.api_key:
+                raise ValueError("❌ Missing GOOGLE_API_KEY in .env file.")
+            self.client = genai.Client(api_key=self.api_key)
+            print("🤖 Using Google Gemini for image generation")
+
+        elif provider == 'openai':
+            if not OPENAI_AVAILABLE:
+                raise ValueError("❌ OpenAI package not installed. Run: pip install openai")
+            self.api_key = os.getenv("OPENAI_API_KEY")
+            if not self.api_key:
+                raise ValueError("❌ Missing OPENAI_API_KEY in .env file.")
+            self.client = OpenAI(api_key=self.api_key)
+            print("🤖 Using OpenAI GPT Image for generation")
+        else:
+            raise ValueError(f"❌ Unknown provider: {provider}. Use 'google' or 'openai'.")
 
     def create_design(self, background_path, subject_path, text="", clothing_prompt="Santa suit", design_template="christmas_round"):
         """
-        Generate a professional festive design using Gemini's image generation.
+        Generate a professional festive design using configured AI provider.
 
         Args:
             background_path: Path to background image (optional, not used in current implementation)
             subject_path: Path to subject image (person/baby/pet)
-            text: Text to include in the design (Gemini will render it naturally)
+            text: Text to include in the design (AI will render it naturally)
             clothing_prompt: Clothing to add (e.g., "Santa suit")
             design_template: Design style ("christmas_round", "holiday_card", "festive_scene")
         """
-        print(f"🍌 SDK: Creating AI design with Gemini Image Generation...")
+        print(f"🍌 SDK: Creating AI design with {self.provider.upper()} Image Generation...")
+
+        if self.provider == 'google':
+            return self._create_design_google(background_path, subject_path, text, clothing_prompt, design_template)
+        elif self.provider == 'openai':
+            return self._create_design_openai(background_path, subject_path, text, clothing_prompt, design_template)
+
+    def _create_design_google(self, background_path, subject_path, text, clothing_prompt, design_template):
+        """Generate design using Google Gemini"""
 
         try:
             # Load subject image and convert to base64
@@ -143,6 +195,86 @@ TEXT INTEGRATION (CRITICAL):
 
         except Exception as e:
             print(f"⚠️ AI generation failed: {e}")
+            print(f"📝 Falling back to basic compositing...")
+            return self._create_composite(background_path, subject_path, clothing_prompt)
+
+    def _create_design_openai(self, background_path, subject_path, text, clothing_prompt, design_template):
+        """Generate design using OpenAI GPT Image 1.5"""
+        try:
+            # Load template from file
+            template_file = os.path.join(os.path.dirname(__file__), "templates", f"{design_template}.md")
+
+            if not os.path.exists(template_file):
+                template_file = os.path.join(os.path.dirname(__file__), "templates", "christmas_round.md")
+
+            with open(template_file, 'r') as f:
+                template_content = f.read()
+
+            # Build text instruction
+            text_instruction = ""
+            if text:
+                text_instruction = f"""
+TEXT INTEGRATION (CRITICAL):
+- Include the text "{text}" in the design
+- Style the text to blend naturally with the holiday theme
+- Position text at the bottom of the composition, curved or integrated into the design
+- Use festive fonts and colors that complement the overall design (gold, white, red, green with glows/shadows)
+- Add subtle effects like glow, snow sparkles, or light rays around the text
+- Make the text clearly readable but feeling like part of the magical scene, not overlaid
+- The text should look like it belongs in the image, with proper lighting and depth
+"""
+
+            # Format template
+            prompt = template_content.format(
+                clothing_prompt=clothing_prompt,
+                text_instruction=text_instruction
+            )
+
+            # Read and encode subject image
+            with open(subject_path, 'rb') as f:
+                subject_bytes = f.read()
+            subject_b64 = base64.b64encode(subject_bytes).decode('utf-8')
+
+            print(f"📝 Using template: {design_template}")
+            print(f"🎨 Generating AI design...")
+
+            # Call OpenAI image generation
+            response = self.client.images.generate(
+                model="dall-e-3",
+                prompt=f"{prompt}\n\nReference the person/subject from this image and keep their face identical.",
+                size="1024x1024",
+                quality="hd",
+                n=1,
+            )
+
+            # Download the generated image
+            import requests
+            image_url = response.data[0].url
+            image_response = requests.get(image_url)
+
+            # Save to temp file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png', mode='wb')
+            temp_file.write(image_response.content)
+            temp_file.close()
+            temp_path = temp_file.name
+
+            # Verify the image
+            test_img = Image.open(temp_path)
+            print(f"✨ AI design generated: {test_img.size} pixels")
+
+            # Apply circular mask for christmas_round template
+            if design_template == "christmas_round":
+                print(f"🎯 Applying circular mask...")
+                masked_path = self._apply_circular_mask(temp_path)
+                test_img.close()
+                os.remove(temp_path)
+                return masked_path
+
+            test_img.close()
+            return temp_path
+
+        except Exception as e:
+            print(f"⚠️ OpenAI generation failed: {e}")
             print(f"📝 Falling back to basic compositing...")
             return self._create_composite(background_path, subject_path, clothing_prompt)
 

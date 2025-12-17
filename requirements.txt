@@ -1,6 +1,7 @@
 typer
 rich
 google-genai
+openai
 pillow
 python-dotenv
 requests
