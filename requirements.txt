@@ -1,0 +1,6 @@
+typer
+rich
+google-genai
+pillow
+python-dotenv
+requests

@@ -1,0 +1,20 @@
+# Environment
+.env
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Output files
+*.jpg
+*.png
+!assets/.gitkeep
+
+# Temporary files
+temp_*.png
+temp_*.jpg
